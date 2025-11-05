@@ -1,0 +1,65 @@
+# Data directories
+/data/
+Rabati*/
+
+# Build artifacts
+colmap/
+openmvs/
+*.o
+*.so
+*.a
+build/
+install/
+
+# Logs
+*.log
+slurm-*.out
+pipeline/logs/*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.Python
+venv/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+*.cache
+
+# COLMAP/OpenMVS outputs
+*.db
+*.db-shm
+*.db-wal
+*.mvs
+*.ply
+*.dmap
+scene*.mvs
+scene*.ply
+sherd_*.ply
+validation_report.csv
+pipeline_state.json
+
+# Claude
+.claude/
+.crush/
+
+# Slurm outputs
+slurm-*.out
+*.e[0-9]*
+*.o[0-9]*

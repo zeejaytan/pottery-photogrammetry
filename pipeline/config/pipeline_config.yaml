@@ -1,0 +1,87 @@
+project:
+  root: /data/gpfs/projects/punim2657/Photogrammetry
+  data_root: /data/gpfs/projects/punim2657/Rabati2025
+targets:
+  min_jpegs_per_tree: 10
+  extensions:
+  - .jpg
+  - .jpeg
+  - .JPG
+  - .JPEG
+  exclude_extensions:
+  - .nef
+  - .NEF
+  - .raw
+  - .RAW
+  - .psx
+  - .zip
+  - .oc3
+  targets_file: pipeline/targets.txt
+paths:
+  log_dir: pipeline/logs
+environment:
+  use_module_system: true
+  python_module: Python/3.10.4
+  extra_modules:
+  - GCC/11.3.0
+  - OpenMPI/4.1.4
+  - ICU/71.1
+  - COLMAP/3.9-CUDA-11.7.0
+  colmap_executable: colmap
+  openmvs_bin_dir: /data/gpfs/projects/punim2657/Photogrammetry/openmvs/install/bin/OpenMVS
+colmap:
+  database_name: database.db
+  sparse_dir: sparse
+  feature_extractor:
+    gpu_index: 0
+    single_camera: 1                 # Assume single camera for turntable
+    use_gpu: 1
+    max_image_size: 4096             # Denser keypoints
+    max_num_features: 12000          # Increased cap for clay textures
+    domain_size_pooling: 1           # GPU-safe pooling for smooth surfaces
+  exhaustive_matcher:                # Exhaustive ensures cross-ring connections
+    gpu_index: 0
+    use_gpu: 1
+    guided_matching: 1               # Stabilizes geometry across height rings
+    num_workers: 16
+  mapper:
+    init_min_tri_angle: 4.0          # Relaxed from 16° for small-baseline turntable
+    abs_pose_min_num_inliers: 20     # Reduced from 30 for turntable captures
+    abs_pose_min_inlier_ratio: 0.20  # Reduced from 0.25 for small baselines
+    ba_refine_focal_length: 1
+    ba_refine_principal_point: 0     # Fixed to prevent drift
+    ba_refine_extra_params: 1
+    num_threads: 8                   # Limit threads for stability
+  image_undistorter:
+    image_path: dense/images
+    output_path: dense
+    max_image_size: 6000
+openmvs:
+  cuda_device: 0
+  interface:
+    image_folder: dense/images      # Undistorted images from COLMAP
+  densify:
+    resolution_level: 0             # Full resolution (0 = full, 1 = half, etc.)
+    number_views: 6                 # Supporting views per depth estimate
+    number_views_fuse: 4            # Views that must agree during fusion
+  reconstruct:
+    target_face_num: 10000000       # Very high target for dense mesh
+  refine:
+    scales: 2                       # Refinement iterations (adds detail)
+validation:
+  min_vertices: 100000
+  min_component_vertices: 1000
+  min_component_area: 1.0
+  max_components: 40
+slurm:
+  account: punim2657
+  partition: gpu-a100
+  qos: normal
+  time_hours: 12
+  mem_gb: 64
+  gpus: 1
+  gres: gpu:A100:1
+  cpus_per_task: 8
+  array_chunk: 4
+  mail_user: ''
+  mail_type: NONE
