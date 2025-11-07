@@ -274,7 +274,29 @@ def main() -> int:
             "Check COLMAP mapper output."
         )
 
-    model_dir = next(child for child in sorted(sparse_dir.iterdir()) if child.is_dir())
+    # Check for multiple models (indicates registration failure)
+    model_dirs = sorted([d for d in sparse_dir.iterdir() if d.is_dir()])
+    if len(model_dirs) > 1:
+        allow_multiple = colmap_cfg.get("mapper", {}).get("multiple_models", 1)
+        msg = (
+            f"WARNING: Found {len(model_dirs)} separate COLMAP models in {sparse_dir}. "
+            "This indicates that not all images were registered into a single reconstruction. "
+            "This will likely result in duplicate or incomplete 3D models. "
+            f"Models found: {[d.name for d in model_dirs]}. "
+            "Consider: (1) lowering init_min_tri_angle, (2) lowering abs_pose_min_num_inliers, "
+            "(3) increasing max_num_features, or (4) improving image overlap."
+        )
+        if allow_multiple == 0:
+            raise PipelineError(
+                f"{msg}\n"
+                "Set 'colmap.mapper.multiple_models: 1' in config to allow multiple models "
+                "(not recommended - fix registration instead)."
+            )
+        else:
+            logger.warning(msg)
+            logger.warning("Using only the first model (largest). Other models will be ignored.")
+
+    model_dir = model_dirs[0]
 
     # Step 4: Image Undistortion
     if not args.keep_existing or args.rebuild_from_matching:
