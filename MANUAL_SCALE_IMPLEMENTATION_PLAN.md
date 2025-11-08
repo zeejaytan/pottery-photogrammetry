@@ -288,80 +288,140 @@ def export_sparse_for_measurement(
     }
 
 
-def read_measurement_file(measurement_path: Path) -> Tuple[float, float]:
+def read_measurement_file(measurement_path: Path) -> Dict[str, float]:
     """
-    Read measurement.env file and extract d_real_m and d_rec_units.
+    Read measurement.env file and extract both measurement pairs.
 
     Args:
         measurement_path: Path to measurement.env
 
     Returns:
-        Tuple of (d_real_m, d_rec_units)
+        Dict with keys: d1_real_m, d1_rec_units, d2_real_m, d2_rec_units
     """
     if not measurement_path.exists():
         raise PipelineError(f"Measurement file not found: {measurement_path}")
 
-    d_real = None
-    d_rec = None
+    measurements = {}
 
     with measurement_path.open() as f:
         for line in f:
             line = line.strip()
-            if line.startswith('d_real_m='):
-                d_real = float(line.split('=')[1])
-            elif line.startswith('d_rec_units='):
-                d_rec = float(line.split('=')[1])
+            # Skip comments and empty lines
+            if not line or line.startswith('#'):
+                continue
 
-    if d_real is None or d_rec is None:
+            if '=' in line:
+                key, val = line.split('=', 1)
+                key = key.strip()
+                val = val.strip()
+
+                if key in ['d1_real_m', 'd1_rec_units', 'd2_real_m', 'd2_rec_units']:
+                    try:
+                        measurements[key] = float(val)
+                    except ValueError:
+                        raise PipelineError(f"Invalid number for {key}: {val}")
+
+    # Validate all required keys present
+    required = ['d1_real_m', 'd1_rec_units', 'd2_real_m', 'd2_rec_units']
+    missing = [k for k in required if k not in measurements]
+
+    if missing:
         raise PipelineError(
-            f"Invalid measurement file. Expected:\n"
-            f"  d_real_m=0.100\n"
-            f"  d_rec_units=0.0XYZ"
+            f"Invalid measurement file. Missing: {', '.join(missing)}\n"
+            f"Expected format:\n"
+            f"  d1_real_m=0.100\n"
+            f"  d1_rec_units=0.0543271\n"
+            f"  d2_real_m=0.150\n"
+            f"  d2_rec_units=0.0814906"
         )
 
-    return d_real, d_rec
+    return measurements
 
 
 def compute_scale_factor(
-    d_real_m: float,
-    d_rec_units: float,
+    measurements: Dict[str, float],
     sanity_min: float = 0.01,
-    sanity_max: float = 100.0
-) -> float:
+    sanity_max: float = 100.0,
+    agreement_tolerance_pct: float = 2.0
+) -> Tuple[float, Dict[str, float]]:
     """
-    Compute scale factor and validate it's within sane bounds.
+    Compute scale factor from two measurements and validate agreement.
 
     Args:
-        d_real_m: Real-world distance in metres
-        d_rec_units: Reconstructed distance in model units
+        measurements: Dict with d1_real_m, d1_rec_units, d2_real_m, d2_rec_units
         sanity_min: Minimum allowed scale factor
         sanity_max: Maximum allowed scale factor
+        agreement_tolerance_pct: Maximum allowed disagreement between scales (%)
 
     Returns:
-        Scale factor
+        Tuple of (mean_scale, validation_info)
 
     Raises:
-        PipelineError if scale is outside sane bounds
+        PipelineError if scales are outside bounds or disagree
     """
-    if d_rec_units == 0:
-        raise PipelineError("Reconstructed distance is zero - check measurement")
+    d1_real = measurements['d1_real_m']
+    d1_rec = measurements['d1_rec_units']
+    d2_real = measurements['d2_real_m']
+    d2_rec = measurements['d2_rec_units']
 
-    scale = d_real_m / d_rec_units
+    # Check for zero denominators
+    if d1_rec == 0 or d2_rec == 0:
+        raise PipelineError("Reconstructed distance is zero - check measurements")
 
-    if not (sanity_min <= scale <= sanity_max):
+    # Compute both scales
+    scale1 = d1_real / d1_rec
+    scale2 = d2_real / d2_rec
+
+    logger.info(f"Measurement 1: {d1_real:.6f} m / {d1_rec:.6f} units = {scale1:.9f}")
+    logger.info(f"Measurement 2: {d2_real:.6f} m / {d2_rec:.6f} units = {scale2:.9f}")
+
+    # Sanity check individual scales
+    if not (sanity_min <= scale1 <= sanity_max):
         raise PipelineError(
-            f"Scale factor {scale:.6f} is outside sane bounds [{sanity_min}, {sanity_max}].\n"
-            f"  d_real_m = {d_real_m}\n"
-            f"  d_rec_units = {d_rec_units}\n"
-            f"  scale = {scale:.6f}\n"
+            f"Scale 1 ({scale1:.6f}) is outside sane bounds [{sanity_min}, {sanity_max}].\n"
+            f"  Measurement 1: {d1_real:.6f} m / {d1_rec:.6f} units\n"
             f"Check your measurements for typos or unit errors."
         )
 
-    logger.info(f"Computed scale factor: {scale:.9f}")
-    logger.info(f"  Real-world distance: {d_real_m} m ({d_real_m*1000:.1f} mm)")
-    logger.info(f"  Reconstructed distance: {d_rec_units:.6f} units")
+    if not (sanity_min <= scale2 <= sanity_max):
+        raise PipelineError(
+            f"Scale 2 ({scale2:.6f}) is outside sane bounds [{sanity_min}, {sanity_max}].\n"
+            f"  Measurement 2: {d2_real:.6f} m / {d2_rec:.6f} units\n"
+            f"Check your measurements for typos or unit errors."
+        )
 
-    return scale
+    # Check agreement between scales
+    mean_scale = (scale1 + scale2) / 2
+    diff_pct = abs(scale1 - scale2) / mean_scale * 100
+
+    logger.info(f"Scale agreement: {diff_pct:.2f}% difference")
+
+    if diff_pct > agreement_tolerance_pct:
+        raise PipelineError(
+            f"Scales disagree by {diff_pct:.2f}% (tolerance: {agreement_tolerance_pct}%)\n"
+            f"  Scale 1: {scale1:.9f} (from {d1_real:.3f}m / {d1_rec:.6f})\n"
+            f"  Scale 2: {scale2:.9f} (from {d2_real:.3f}m / {d2_rec:.6f})\n"
+            f"Check measurements for errors:\n"
+            f"  - Did you measure the same features in the PLY and real world?\n"
+            f"  - Are units consistent (metres, not mm)?\n"
+            f"  - Did you read the full precision from the viewer?"
+        )
+
+    logger.info(f"✓ Scales agree within {agreement_tolerance_pct}% tolerance")
+    logger.info(f"Using mean scale: {mean_scale:.9f}")
+
+    validation_info = {
+        'scale1': scale1,
+        'scale2': scale2,
+        'mean_scale': mean_scale,
+        'diff_pct': diff_pct,
+        'd1_real_m': d1_real,
+        'd1_rec_units': d1_rec,
+        'd2_real_m': d2_real,
+        'd2_rec_units': d2_rec
+    }
+
+    return mean_scale, validation_info
 
 
 def apply_scale_to_sparse(
@@ -444,33 +504,43 @@ def regenerate_dense_workspace(
 
 def write_scale_log(
     scale_dir: Path,
-    d_real_m: float,
-    d_rec_units: float,
-    scale_factor: float
+    scale_factor: float,
+    validation_info: Dict[str, float]
 ) -> None:
     """
     Write scale computation details to log file.
 
     Args:
         scale_dir: Scale directory
-        d_real_m: Real-world distance
-        d_rec_units: Reconstructed distance
-        scale_factor: Computed scale
+        scale_factor: Applied scale factor (mean of two measurements)
+        validation_info: Dict with both measurements and validation details
     """
     log_path = scale_dir / "scale_log.txt"
 
     with log_path.open("w") as f:
         f.write("=" * 70 + "\n")
-        f.write("MANUAL SCALE APPLICATION\n")
+        f.write("MANUAL SCALE APPLICATION (DUAL-MEASUREMENT VALIDATION)\n")
         f.write("=" * 70 + "\n\n")
 
         f.write(f"Application time: {datetime.now().isoformat()}\n\n")
 
-        f.write("Measurements:\n")
-        f.write(f"  Real-world distance:    {d_real_m:.6f} m ({d_real_m*1000:.1f} mm)\n")
-        f.write(f"  Reconstructed distance: {d_rec_units:.6f} units\n\n")
+        f.write("Measurement 1:\n")
+        f.write(f"  Real-world distance:    {validation_info['d1_real_m']:.6f} m ")
+        f.write(f"({validation_info['d1_real_m']*1000:.1f} mm)\n")
+        f.write(f"  Reconstructed distance: {validation_info['d1_rec_units']:.6f} units\n")
+        f.write(f"  Scale 1:                {validation_info['scale1']:.9f}\n\n")
 
-        f.write(f"Computed scale factor: {scale_factor:.9f}\n\n")
+        f.write("Measurement 2:\n")
+        f.write(f"  Real-world distance:    {validation_info['d2_real_m']:.6f} m ")
+        f.write(f"({validation_info['d2_real_m']*1000:.1f} mm)\n")
+        f.write(f"  Reconstructed distance: {validation_info['d2_rec_units']:.6f} units\n")
+        f.write(f"  Scale 2:                {validation_info['scale2']:.9f}\n\n")
+
+        f.write("Validation:\n")
+        f.write(f"  Agreement:              {validation_info['diff_pct']:.2f}% difference\n")
+        f.write(f"  Status:                 {'PASS' if validation_info['diff_pct'] < 2.0 else 'FAIL'}\n\n")
+
+        f.write(f"Applied scale factor:     {scale_factor:.9f} (mean of both)\n\n")
 
         f.write("This scale factor transforms the sparse reconstruction\n")
         f.write("to real-world metric units (metres).\n\n")
@@ -486,23 +556,24 @@ def write_scale_log(
 def append_to_runlog(
     work_dir: Path,
     scale_factor: float,
-    d_real_m: float,
-    d_rec_units: float
+    validation_info: Dict[str, float]
 ) -> None:
     """
     Append scale application to pipeline runlog.
 
     Args:
         work_dir: Work directory
-        scale_factor: Applied scale factor
-        d_real_m: Real-world distance
-        d_rec_units: Reconstructed distance
+        scale_factor: Applied scale factor (mean)
+        validation_info: Validation details from both measurements
     """
     runlog_path = work_dir / "pipeline_RUNLOG.txt"
 
     log_line = (
-        f"scaled=1 scale={scale_factor:.9f} "
-        f"d_real_m={d_real_m:.6f} d_rec={d_rec_units:.6f} "
+        f"scaled=1 "
+        f"scale={scale_factor:.9f} "
+        f"scale1={validation_info['scale1']:.9f} "
+        f"scale2={validation_info['scale2']:.9f} "
+        f"diff_pct={validation_info['diff_pct']:.2f} "
         f"time={datetime.now().isoformat()}\n"
     )
 
@@ -603,15 +674,22 @@ def main():
 
         # Step 1: Read measurements
         print("Reading measurements from", measurement_file)
-        d_real, d_rec = read_measurement_file(measurement_file)
-        print(f"  Real-world distance: {d_real} m ({d_real*1000:.1f} mm)")
-        print(f"  Reconstructed distance: {d_rec}")
+        measurements = read_measurement_file(measurement_file)
+        print("Measurement 1:")
+        print(f"  Real-world: {measurements['d1_real_m']} m ({measurements['d1_real_m']*1000:.1f} mm)")
+        print(f"  Reconstructed: {measurements['d1_rec_units']}")
+        print("Measurement 2:")
+        print(f"  Real-world: {measurements['d2_real_m']} m ({measurements['d2_real_m']*1000:.1f} mm)")
+        print(f"  Reconstructed: {measurements['d2_rec_units']}")
         print()
 
-        # Step 2: Compute scale factor
-        print("Computing scale factor...")
-        scale_factor = compute_scale_factor(d_real, d_rec)
-        print(f"  Scale factor: {scale_factor:.9f}")
+        # Step 2: Compute and validate scale factor
+        print("Computing and validating scale factors...")
+        scale_factor, validation_info = compute_scale_factor(measurements)
+        print(f"  Scale 1: {validation_info['scale1']:.9f}")
+        print(f"  Scale 2: {validation_info['scale2']:.9f}")
+        print(f"  Agreement: {validation_info['diff_pct']:.2f}% difference")
+        print(f"  Using mean: {scale_factor:.9f}")
         print()
 
         # Save scale factor
@@ -672,8 +750,8 @@ def main():
 
         # Step 5: Write logs
         print("Writing logs...")
-        write_scale_log(args.work / "scale", d_real, d_rec, scale_factor)
-        append_to_runlog(args.work, scale_factor, d_real, d_rec)
+        write_scale_log(args.work / "scale", scale_factor, validation_info)
+        append_to_runlog(args.work, scale_factor, validation_info)
         print()
 
         print("=" * 70)
@@ -816,7 +894,7 @@ This runs feature extraction, matching, mapper, and then exports:
 - `work_colmap_openmvs/sparse_ply/points3D.ply` (for measurement)
 - `work_colmap_openmvs/sparse_txt/*.txt` (for provenance)
 
-### Step 2: Measure on Laptop
+### Step 2: Measure TWO Features on Laptop
 
 Copy `sparse_ply/points3D.ply` to your laptop:
 
@@ -824,21 +902,36 @@ Copy `sparse_ply/points3D.ply` to your laptop:
 scp spartan:/path/to/work_colmap_openmvs/sparse_ply/points3D.ply ./
 ```
 
-Open in CloudCompare or MeshLab:
-1. Select two points on a known feature (e.g., pottery base diameter)
+Open in CloudCompare or MeshLab and make TWO independent measurements:
+
+**Measurement 1 (e.g., base diameter):**
+1. Select two points on opposite sides of pottery base
 2. Use "Point Picking" or "Measure Distance" tool
-3. Note the **reconstructed distance** shown (e.g., `0.0543271`)
-4. You know the **real-world distance** (e.g., `100mm = 0.100m`)
+3. Note **reconstructed distance**: `0.0543271` units
+4. Know **real-world distance**: `100mm = 0.100m`
+
+**Measurement 2 (e.g., pottery height):**
+1. Select two points (bottom to top of pottery)
+2. Measure distance
+3. Note **reconstructed distance**: `0.0814906` units
+4. Know **real-world distance**: `150mm = 0.150m`
+
+**Why two measurements?** They validate each other. If both give the same scale (±2%), your measurements are correct!
 
 ### Step 3: Apply Scale on Spartan
 
-Create measurement file:
+Create measurement file with BOTH measurements:
 
 ```bash
 cd /path/to/work_colmap_openmvs/scale
 cat > measurement.env <<EOF
-d_real_m=0.100
-d_rec_units=0.0543271
+# Measurement 1: Base diameter
+d1_real_m=0.100
+d1_rec_units=0.0543271
+
+# Measurement 2: Pottery height
+d2_real_m=0.150
+d2_rec_units=0.0814906
 EOF
 ```
 
@@ -850,9 +943,14 @@ python pipeline/bin/scale_apply.py \
 ```
 
 This will:
-- Compute scale: `0.100 / 0.0543271 = 1.840...`
+- Compute scale 1: `0.100 / 0.0543271 = 1.8406...`
+- Compute scale 2: `0.150 / 0.0814906 = 1.8407...`
+- Check agreement: `0.005% difference` ✓
+- Use mean scale: `1.8406...`
 - Apply to sparse: `sparse/0` → `sparse_scaled/0`
 - Regenerate dense: `dense_scaled/`
+
+If scales disagree >2%, the script aborts with an error showing both values.
 
 ### Step 4: Continue to OpenMVS
 
@@ -893,14 +991,22 @@ After applying scale, verify in CloudCompare:
 
 ### Reapply Scale
 
-If you made a mistake, just update `measurement.env` and rerun:
+If measurements disagree or you made a mistake, update `measurement.env` and rerun:
 
 ```bash
 # Edit measurement.env with corrected values
+nano work_colmap_openmvs/scale/measurement.env
+
+# Reapply
 python pipeline/bin/scale_apply.py --work /path/to/work_colmap_openmvs
 ```
 
 The script will regenerate `sparse_scaled/` and `dense_scaled/`.
+
+**Common fixes:**
+- Scales disagree >2%: Check you measured same features in PLY and real world
+- One scale way off: Check for unit errors (mm vs m)
+- Both scales too high/low: Check you read full precision from viewer
 
 ## Masking Considerations
 
@@ -934,21 +1040,47 @@ All scale information is logged:
 
 ## Troubleshooting
 
+### "Scales disagree by X%"
+
+This is the most common error and means your measurements don't match:
+
+**Check:**
+- Did you measure the SAME features in the PLY and real world?
+  - ✓ Base diameter in both
+  - ✗ Base diameter in PLY, base circumference in reality
+- Are units consistent?
+  - ✓ `d1_real_m=0.100` (100mm converted to metres)
+  - ✗ `d1_real_m=100` (forgot to convert mm to m)
+- Did you read full precision from viewer?
+  - ✓ `d1_rec_units=0.0543271`
+  - ✗ `d1_rec_units=0.054` (rounded too much)
+
+**If scales disagree <5%:** Probably rounding or slightly different measurement points. Usually safe to increase tolerance if you're confident.
+
+**If scales disagree >10%:** Definitely a unit error or wrong feature. Recheck measurements.
+
 ### "Scale factor outside sane bounds"
 
-Check your measurements:
+One or both scales are outside [0.01, 100]:
 - Did you use metres for `d_real_m`? (100mm = 0.100, not 100)
-- Did you copy the full precision from the viewer for `d_rec_units`?
-- Are you measuring the same feature in both cases?
+- Did you swap real and reconstructed values?
+- Is the reconstructed distance reasonable? (Should be 0.01-10 for pottery)
 
-### "Measurement file not found"
+### "Measurement file not found" or "Missing: d2_real_m"
 
-Create the file:
+Create the file with all four required values:
 
 ```bash
 cd work_colmap_openmvs/scale
-nano measurement.env
-# Add your measurements
+cat > measurement.env <<EOF
+# Measurement 1
+d1_real_m=0.100
+d1_rec_units=0.0543271
+
+# Measurement 2
+d2_real_m=0.150
+d2_rec_units=0.0814906
+EOF
 ```
 
 ### Dense workspace not regenerated
@@ -1037,11 +1169,12 @@ python pipeline/bin/run_openmvs.py work_colmap_openmvs/dense_scaled
 ## Success Criteria
 
 1. **Export Quality**: PLY loads in CloudCompare/MeshLab, points are measurable
-2. **Scale Accuracy**: Applied scale reproduces known dimensions within ±0.5%
-3. **Dense Consistency**: `dense_scaled/` has same image count as original `dense/`
-4. **OpenMVS Compatibility**: `InterfaceCOLMAP` reads `dense_scaled/` without errors
-5. **Measurement Reproducibility**: Re-measuring scaled output gives expected values
-6. **Provenance Complete**: All logs, measurements, and metadata are recorded
+2. **Measurement Agreement**: Two independent measurements agree within ±2%
+3. **Scale Accuracy**: Applied scale reproduces both known dimensions within ±0.5%
+4. **Dense Consistency**: `dense_scaled/` has same image count as original `dense/`
+5. **OpenMVS Compatibility**: `InterfaceCOLMAP` reads `dense_scaled/` without errors
+6. **Measurement Reproducibility**: Re-measuring scaled output gives expected values for both features
+7. **Provenance Complete**: All logs show both measurements, agreement %, and mean scale
 
 ---
 
@@ -1052,8 +1185,9 @@ python pipeline/bin/run_openmvs.py work_colmap_openmvs/dense_scaled
 - **COLMAP converter fails**: Log error, keep original sparse intact
 
 ### Measurement Phase
-- **Invalid measurement file**: Clear error showing expected format
-- **Scale outside bounds**: Abort with sanity-check message
+- **Invalid measurement file**: Clear error showing expected format (all 4 values)
+- **Scale outside bounds**: Abort with sanity-check message for each scale
+- **Scales disagree >2%**: Abort with detailed comparison showing both scales and measurements
 - **Zero or negative values**: Error before calling `model_transformer`
 
 ### Application Phase
@@ -1085,8 +1219,9 @@ This is negligible compared to the ~10 minute COLMAP Stage 1 runtime.
 | Feature | Manual Scale | Coded Targets |
 |---------|-------------|---------------|
 | **Setup** | None (use existing sparse) | Print/place board |
-| **User effort** | 2 min measurement | Minimal after setup |
-| **Accuracy** | ±0.5% (user-dependent) | ±2mm (board-dependent) |
+| **User effort** | 4 min (2 measurements) | Minimal after setup |
+| **Accuracy** | ±0.5% (validated with 2 measurements) | ±2mm (board-dependent) |
+| **Error detection** | Automatic (2 measurements must agree) | None (single measurement) |
 | **Automation** | Semi-automated | Fully automated |
 | **Flexibility** | Measure any feature | Limited to board |
 | **Overhead** | ~3 min per tree | +30 sec per tree |
@@ -1105,11 +1240,14 @@ This is negligible compared to the ~10 minute COLMAP Stage 1 runtime.
 2. **Prompt user during pipeline run?**
    - **Decision**: Optional prompt with `--export-sparse`, can skip for batch
 
-3. **Allow multiple measurements?**
-   - **Decision**: Single measurement for simplicity, user can rerun if needed
+3. **How many measurements required?**
+   - **Decision**: TWO measurements required, validates accuracy and catches errors
 
-4. **Validate scale against expected range?**
-   - **Decision**: Yes, sanity bounds [0.01, 100.0] to catch typos
+4. **Agreement tolerance?**
+   - **Decision**: ±2% default, configurable. Strict enough to catch unit errors, loose enough for measurement variation
+
+5. **Validate scale against expected range?**
+   - **Decision**: Yes, sanity bounds [0.01, 100.0] to catch typos on EACH scale
 
 5. **Keep or delete original dense/?**
    - **Decision**: Keep it, only ~2GB per tree, useful for comparison
