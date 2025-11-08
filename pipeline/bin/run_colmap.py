@@ -51,6 +51,11 @@ def parse_args() -> argparse.Namespace:
         "--mask-path",
         help="Path to masks directory (auto-detected if masks_user/ exists in work dir).",
     )
+    parser.add_argument(
+        "--export-sparse",
+        action="store_true",
+        help="Export sparse model to PLY/TXT for manual scale measurement after mapper.",
+    )
     return parser.parse_args()
 
 
@@ -405,7 +410,40 @@ def main() -> int:
 
     model_dir = model_dirs[0]
 
-    # Step 3.5: Model Alignment (if coded targets enabled)
+    # Step 3.5: Optional sparse export for manual scaling
+    if args.export_sparse:
+        logger.info("Exporting sparse model for scale measurement...")
+        try:
+            from lib.manual_scale import export_sparse_for_measurement
+
+            export_paths = export_sparse_for_measurement(
+                work_dir=work_dir,
+                sparse_path=model_dir,
+                colmap_exec=colmap_exec
+            )
+
+            logger.info(f"✓ Sparse exported to PLY: {export_paths['ply']}")
+            logger.info("Follow manual scale workflow:")
+            logger.info("  1. Copy PLY to laptop and measure TWO known distances")
+            logger.info("  2. Edit work_dir/scale/measurement.env with measurements")
+            logger.info("  3. Run: python pipeline/bin/scale_apply.py --work <work_dir>")
+            logger.info("  4. Continue pipeline or use dense_scaled/ for OpenMVS")
+
+        except Exception as e:
+            logger.warning(f"Sparse export failed: {e}")
+
+    # Step 3.6: Check for scaled sparse and use if available
+    scaled_sparse = work_dir / "sparse_scaled" / "0"
+    scaled_dense = work_dir / "dense_scaled"
+
+    if scaled_sparse.exists() and not scaled_dense.exists() and not args.keep_existing:
+        logger.info("Found scaled sparse model, using it for undistortion")
+        logger.info(f"  Using: {scaled_sparse}")
+        model_dir = scaled_sparse
+        dense_dir = scaled_dense
+        logger.info(f"  Output will be: {dense_dir}")
+
+    # Step 3.7: Model Alignment (if coded targets enabled)
     if use_coded_targets and not args.keep_existing:
         logger.info("Aligning sparse model to real-world scale...")
 
@@ -437,6 +475,7 @@ def main() -> int:
             logger.warning("Continuing without alignment")
 
     # Step 4: Image Undistortion
+    # Note: If using scaled sparse, dense_dir will be dense_scaled/
     if not args.keep_existing or args.rebuild_from_matching:
         undistort_cmd = [
             colmap_exec,
