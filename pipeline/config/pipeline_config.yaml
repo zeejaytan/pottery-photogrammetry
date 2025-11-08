@@ -111,6 +111,16 @@ aruco_scale:
     min_scale: 0.01                 # Minimum allowed scale factor
     max_scale: 100.0                # Maximum allowed scale factor
   prefer_aruco_scale: true          # Prefer ArUco scale over manual/coded targets
+mesh_splitter:
+  enabled: false                    # Enable mesh splitting after RefineMesh
+  auto_run: false                   # Auto-run after RefineMesh in batch
+  min_faces: 5000                   # Minimum face count to keep component
+  max_elongation: 25.0              # Maximum elongation ratio (max_dim / min_dim)
+  bridge_quantile: 0.995            # Edge length quantile for bridge breaking
+  output_dir: split_sherds          # Output directory name
+  format: ply                       # Output format: 'ply' or 'obj'
+  keep_all: false                   # Keep all components (only min_faces filter)
+  keep_top: null                    # Keep only top N largest (null = disabled)
 maskbuild:
   quick_build:
     # Feature extraction (faster than main pipeline)
