@@ -103,6 +103,14 @@ manual_scale:
   agreement_tolerance_pct: 2.0      # Max disagreement between two measurements (%)
   prefer_scaled_sparse: true        # Use sparse_scaled/0 if it exists
   dense_output_name: dense_scaled   # Output directory for scaled dense
+aruco_scale:
+  enabled: false                    # Enable ArUco scale workflow
+  dictionary: DICT_4X4_50           # ArUco dictionary
+  auto_run: false                   # Auto-run after mapper (requires --idA/--idB/--real-m in env)
+  sanity_bounds:
+    min_scale: 0.01                 # Minimum allowed scale factor
+    max_scale: 100.0                # Maximum allowed scale factor
+  prefer_aruco_scale: true          # Prefer ArUco scale over manual/coded targets
 maskbuild:
   quick_build:
     # Feature extraction (faster than main pipeline)

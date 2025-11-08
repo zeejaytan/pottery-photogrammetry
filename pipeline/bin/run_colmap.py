@@ -56,6 +56,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Export sparse model to PLY/TXT for manual scale measurement after mapper.",
     )
+    parser.add_argument(
+        "--scale-aruco",
+        action="store_true",
+        help="Run ArUco marker-based scale measurement after mapper (interactive).",
+    )
     return parser.parse_args()
 
 
@@ -431,6 +436,23 @@ def main() -> int:
 
         except Exception as e:
             logger.warning(f"Sparse export failed: {e}")
+
+    # Step 3.5b: Optional ArUco scale measurement
+    if args.scale_aruco:
+        logger.info("Running ArUco marker-based scale measurement...")
+        try:
+            scale_aruco_cmd = [
+                sys.executable,
+                str(Path(__file__).parent / "scale_aruco.py"),
+                "--work", str(work_dir),
+                "--config", str(args.config),
+                "--colmap", colmap_exec
+            ]
+            run_command(scale_aruco_cmd, logger=logger)
+            logger.info("✓ ArUco scale measurement complete")
+        except Exception as e:
+            logger.warning(f"ArUco scale measurement failed: {e}")
+            logger.warning("Continuing without scale")
 
     # Step 3.6: Check for scaled sparse and use if available
     scaled_sparse = work_dir / "sparse_scaled" / "0"
