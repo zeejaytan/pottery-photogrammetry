@@ -44,8 +44,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--rebuild-from-matching",
-        action="store_true", 
+        action="store_true",
         help="Keep database if complete, but rebuild from matching stage onwards.",
+    )
+    parser.add_argument(
+        "--mask-path",
+        help="Path to masks directory (auto-detected if masks_user/ exists in work dir).",
     )
     return parser.parse_args()
 
@@ -133,6 +137,23 @@ def main() -> int:
         dense_dir.mkdir(parents=True, exist_ok=True)
         images_path.mkdir(parents=True, exist_ok=True)
 
+        # Check for user-provided masks (from maskbuild)
+        mask_path = None
+        if args.mask_path:
+            mask_path = Path(args.mask_path)
+            if not mask_path.is_absolute():
+                mask_path = work_dir / mask_path
+            logger.info("Using user-specified masks: %s", mask_path)
+        else:
+            # Auto-detect masks_user in work directory
+            auto_mask_dir = work_dir / "masks_user"
+            if auto_mask_dir.exists() and any(auto_mask_dir.glob("*.png")):
+                mask_path = auto_mask_dir
+                logger.info("Auto-detected user masks: %s", mask_path)
+                # Count masks
+                mask_count = len(list(mask_path.glob("*.png")))
+                logger.info("  Found %d mask files", mask_count)
+
         # Step 1: Feature Extraction
         feature_cfg = colmap_cfg.get("feature_extractor", {}) or {}
         feature_cmd = [
@@ -143,6 +164,10 @@ def main() -> int:
             "--image_path",
             str(tree_dir),
         ]
+
+        # Add mask path if available
+        if mask_path:
+            feature_cmd.extend(["--ImageReader.mask_path", str(mask_path)])
 
         # Single camera flag
         if "single_camera" in feature_cfg:

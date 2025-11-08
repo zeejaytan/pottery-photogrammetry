@@ -74,6 +74,32 @@ validation:
   min_component_vertices: 5000      # Increased from 1000 to filter noise
   min_component_area: 10.0          # Increased from 1.0 to filter thin artifacts
   max_components: 40                # Safety limit for large fragmented pottery
+maskbuild:
+  quick_build:
+    # Feature extraction (faster than main pipeline)
+    max_image_size: 2048            # 50% of main pipeline (4096)
+    max_num_features: 8000          # 50% of main pipeline (16000)
+    # Matching (same strategy as main)
+    matcher: exhaustive             # Still need cross-ring connections
+    guided_matching: 1
+    # Mapper (more lenient than main)
+    mapper_min_tri_angle: 2.0       # Same as main
+    mapper_min_inliers: 12          # Lower than main (15)
+    mapper_min_inlier_ratio: 0.15   # Lower than main (0.18)
+    # Dense reconstruction (low-resolution)
+    undistort_max_image_size: 2048
+    densify_resolution_level: 2     # 1/4 resolution (main: 0 = full)
+    densify_number_views: 4         # Fewer than main (8)
+    densify_number_views_fuse: 3    # Fewer than main (5)
+    # Mesh (simplified)
+    reconstruct_simplify: 0.5       # Target 50% face reduction
+  projection:
+    # Mask generation parameters
+    pad_pixels: 2                   # Protect thin rims
+    erosion: 0                      # Set to 1 if halos appear
+    # Frame validation thresholds
+    bbox_tolerance: 0.1             # 10% bbox shrinkage OK
+    distance_tolerance: 0.05        # 5% distance error OK
 slurm:
   account: punim2657
   partition: gpu-a100
