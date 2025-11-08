@@ -74,6 +74,26 @@ validation:
   min_component_vertices: 5000      # Increased from 1000 to filter noise
   min_component_area: 10.0          # Increased from 1.0 to filter thin artifacts
   max_components: 40                # Safety limit for large fragmented pottery
+coded_targets:
+  enabled: false                    # Enable coded target workflow
+  board_type: aruco                 # "aruco" or "charuco"
+  dictionary: DICT_4X4_50           # ArUco dictionary
+  square_size_mm: 50.0              # Real-world square size (mm)
+
+  # ChArUco board dimensions (if board_type: charuco)
+  board_width: 5                    # Squares in width
+  board_height: 7                   # Squares in height
+
+  # Pairing parameters
+  pairing:
+    min_shared_markers: 1           # Minimum shared markers for pair
+    temporal_window: 3              # Sequential neighbor window
+
+  # Alignment parameters
+  alignment:
+    method: auto                    # "auto", "poses", "scale_only"
+    min_board_views: 10             # Minimum images with board visible
+    robust_alignment: true          # Use RANSAC in model_aligner
 maskbuild:
   quick_build:
     # Feature extraction (faster than main pipeline)

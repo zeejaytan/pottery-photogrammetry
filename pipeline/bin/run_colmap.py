@@ -98,6 +98,10 @@ def main() -> int:
 
     dense_dir = workspace_path
 
+    # Check for coded targets configuration
+    target_cfg = context.config.get("coded_targets", {})
+    use_coded_targets = target_cfg.get("enabled", False)
+
     # Check if database is complete (has all expected JPG images)
     should_rebuild_database = True
     if args.rebuild_from_matching and database_path.exists():
@@ -219,42 +223,120 @@ def main() -> int:
         dense_dir.mkdir(parents=True, exist_ok=True)
         images_path.mkdir(parents=True, exist_ok=True)
 
-    # Step 2: Exhaustive Matching (essential for multi-ring turntable captures)
+    # Step 1.5: Coded Target Detection (if enabled)
+    pairs_file = None
+    if use_coded_targets:
+        logger.info("Coded targets enabled")
+
+        targets_dir = work_dir / "coded_targets"
+        pairs_file = targets_dir / "pairs.txt"
+
+        if not pairs_file.exists():
+            logger.info("Running coded target detection...")
+            detect_cmd = [
+                sys.executable,  # Use same Python interpreter
+                str(Path(__file__).parent / "detect_coded_targets.py"),
+                "--images", str(tree_dir),
+                "--work", str(work_dir),
+                "--config", str(args.config)
+            ]
+            try:
+                run_command(detect_cmd, logger=logger)
+            except Exception as e:
+                logger.warning(f"Coded target detection failed: {e}")
+                logger.warning("Falling back to exhaustive matching")
+                use_coded_targets = False
+                pairs_file = None
+        else:
+            logger.info(f"Using existing pairs file: {pairs_file}")
+
+        # Verify pairs file exists and is not empty
+        if pairs_file and pairs_file.exists():
+            with pairs_file.open() as f:
+                pair_count = sum(1 for line in f if line.strip())
+            if pair_count == 0:
+                logger.warning("Pairs file is empty, falling back to exhaustive matching")
+                use_coded_targets = False
+                pairs_file = None
+            else:
+                logger.info(f"Found {pair_count} image pairs from coded targets")
+        else:
+            logger.warning("No pairs file generated, falling back to exhaustive matching")
+            use_coded_targets = False
+            pairs_file = None
+
+    # Step 2: Feature Matching (exhaustive or target-guided)
     if not args.keep_existing or args.rebuild_from_matching:
-        # Always use exhaustive matcher for turntable captures (120-170 images)
-        # This ensures cross-ring connections that sequential matching often misses
         matcher_cfg = colmap_cfg.get("exhaustive_matcher", {}) or {}
-        matcher_cmd = [
-            colmap_exec,
-            "exhaustive_matcher",
-            "--database_path",
-            str(database_path),
-        ]
 
-        # GPU settings
-        if "use_gpu" in matcher_cfg:
-            matcher_cmd.extend(
-                ["--SiftMatching.use_gpu", str(matcher_cfg["use_gpu"])]
-            )
-        if "gpu_index" in matcher_cfg:
-            matcher_cmd.extend(
-                ["--SiftMatching.gpu_index", str(matcher_cfg["gpu_index"])]
-            )
+        if use_coded_targets and pairs_file and pairs_file.exists():
+            # Use coded-target guided matching with matches_importer
+            logger.info("Using coded-target guided matching...")
 
-        # Guided matching - critical for turntable stability across height rings
-        if "guided_matching" in matcher_cfg:
-            matcher_cmd.extend(
-                ["--SiftMatching.guided_matching", str(matcher_cfg["guided_matching"])]
-            )
+            matcher_cmd = [
+                colmap_exec,
+                "matches_importer",
+                "--database_path",
+                str(database_path),
+                "--match_list_path",
+                str(pairs_file),
+                "--match_type",
+                "pairs",
+            ]
 
-        # Threading
-        if "num_workers" in matcher_cfg:
-            matcher_cmd.extend(
-                ["--SiftMatching.num_threads", str(matcher_cfg["num_workers"])]
-            )
+            # GPU settings
+            if "use_gpu" in matcher_cfg:
+                matcher_cmd.extend(
+                    ["--SiftMatching.use_gpu", str(matcher_cfg["use_gpu"])]
+                )
+            if "gpu_index" in matcher_cfg:
+                matcher_cmd.extend(
+                    ["--SiftMatching.gpu_index", str(matcher_cfg["gpu_index"])]
+                )
 
-        logger.info("Running exhaustive matcher with guided matching...")
-        run_command(matcher_cmd, logger=logger)
+            # Guided matching
+            if "guided_matching" in matcher_cfg:
+                matcher_cmd.extend(
+                    ["--SiftMatching.guided_matching", str(matcher_cfg["guided_matching"])]
+                )
+
+            logger.info("Running matches_importer with pair list...")
+            run_command(matcher_cmd, logger=logger)
+
+        else:
+            # Use exhaustive matcher for turntable captures (120-170 images)
+            # This ensures cross-ring connections that sequential matching often misses
+            matcher_cmd = [
+                colmap_exec,
+                "exhaustive_matcher",
+                "--database_path",
+                str(database_path),
+            ]
+
+            # GPU settings
+            if "use_gpu" in matcher_cfg:
+                matcher_cmd.extend(
+                    ["--SiftMatching.use_gpu", str(matcher_cfg["use_gpu"])]
+                )
+            if "gpu_index" in matcher_cfg:
+                matcher_cmd.extend(
+                    ["--SiftMatching.gpu_index", str(matcher_cfg["gpu_index"])]
+                )
+
+            # Guided matching - critical for turntable stability across height rings
+            if "guided_matching" in matcher_cfg:
+                matcher_cmd.extend(
+                    ["--SiftMatching.guided_matching", str(matcher_cfg["guided_matching"])]
+                )
+
+            # Threading
+            if "num_workers" in matcher_cfg:
+                matcher_cmd.extend(
+                    ["--SiftMatching.num_threads", str(matcher_cfg["num_workers"])]
+                )
+
+            logger.info("Running exhaustive matcher with guided matching...")
+            run_command(matcher_cmd, logger=logger)
 
     # Step 3: Sparse Reconstruction with relaxed thresholds for turntable captures
     if not args.keep_existing or args.rebuild_from_matching:
@@ -322,6 +404,37 @@ def main() -> int:
             logger.warning("Using only the first model (largest). Other models will be ignored.")
 
     model_dir = model_dirs[0]
+
+    # Step 3.5: Model Alignment (if coded targets enabled)
+    if use_coded_targets and not args.keep_existing:
+        logger.info("Aligning sparse model to real-world scale...")
+
+        try:
+            from lib.target_alignment import align_sparse_model, create_alignment_report
+
+            transform_info = align_sparse_model(
+                sparse_dir=model_dir,
+                work_dir=work_dir,
+                config_path=Path(args.config),
+                colmap_exec=colmap_exec
+            )
+
+            # Save transform info
+            transform_file = work_dir / "alignment_transform.json"
+            import json
+            with transform_file.open("w") as f:
+                json.dump(transform_info, f, indent=2)
+
+            # Create alignment report
+            create_alignment_report(transform_info, work_dir)
+
+            logger.info(f"✓ Model aligned: {transform_info.get('method', 'unknown')}")
+            if transform_info.get('scale_factor'):
+                logger.info(f"  Scale factor: {transform_info['scale_factor']:.6f}")
+
+        except Exception as e:
+            logger.warning(f"Model alignment failed: {e}")
+            logger.warning("Continuing without alignment")
 
     # Step 4: Image Undistortion
     if not args.keep_existing or args.rebuild_from_matching:
