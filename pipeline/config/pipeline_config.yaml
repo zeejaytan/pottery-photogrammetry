@@ -21,7 +21,18 @@ paths:
   log_dir: pipeline/logs
 environment:
   use_module_system: true
-  python_module: Python/3.10.4
+  # The interpreter every stage runs on. Named explicitly because pipeline_main.sh must
+  # read this file BEFORE any module is loaded, and `python3` on Spartan now resolves to
+  # the `graphify` conda environment, which has no PyYAML. Needs PyYAML, trimesh, numpy,
+  # pandas, scipy and networkx. Borrowed from the MILo project for now — see AGENTS.md,
+  # "The interpreter is borrowed".
+  python_interpreter: /data/gpfs/projects/punim2657/MILo/envs/milo/bin/python
+  # Deliberately empty. Python/3.10.4 lives underneath GCC in the Lmod hierarchy, so
+  # loading it before the compiler fails outright; and the interpreter now comes from
+  # python_interpreter, which makes the module redundant either way.
+  python_module: ""
+  # Order matters: the compiler and its MPI must load before anything that lives
+  # underneath them in the Lmod hierarchy.
   extra_modules:
   - GCC/11.3.0
   - OpenMPI/4.1.4
@@ -70,7 +81,11 @@ openmvs:
   refine:
     scales: 2                       # Refinement iterations (adds detail)
 validation:
-  min_vertices: 100000              # Minimum vertices for a valid sherd
+  # 100000 discarded every actual sherd on 16062025 — they come out between 18k and 82k
+  # vertices — and kept only the clamp rig (232k) and the backdrop (227k). Vertex count
+  # measures how well something was photographed, not whether it is pottery. Judge the
+  # components with a look and with MILo/scripts/extract_sherds.py instead.
+  min_vertices: 2000                # Minimum vertices for a valid sherd
   min_component_vertices: 5000      # Increased from 1000 to filter noise
   min_component_area: 10.0          # Increased from 1.0 to filter thin artifacts
   max_components: 40                # Safety limit for large fragmented pottery
@@ -152,7 +167,11 @@ slurm:
   partition: gpu-a100
   qos: normal
   time_hours: 12
-  mem_gb: 64
+  # 64G was OOM-killed on the FIRST image of A11 (5568x3712) at 67G. DSP-SIFT builds
+  # several scaled copies of each image per thread, so peak memory scales with
+  # pixels x features x threads, not with the number of photographs. Raising the request
+  # is the fix that leaves the reconstruction unchanged; lowering max_num_features is not.
+  mem_gb: 256
   gpus: 1
   gres: gpu:A100:1
   cpus_per_task: 8

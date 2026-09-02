@@ -63,3 +63,8 @@ pipeline_state.json
 slurm-*.out
 *.e[0-9]*
 *.o[0-9]*
+
+# Local-only rsync landing zone for small fetched logs/renders (workspace convention)
+artifacts/
+.scratch/
+CLAUDE.local.md

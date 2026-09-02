@@ -11,7 +11,9 @@ PIPELINE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 WORK_DIR="$1"
 CONFIG_PATH="${2:-${PIPELINE_DIR}/config/pipeline_config.yaml}"
-PYTHON_BIN="${PYTHON:-python3}"
+# Not `python3`: see bin/pipeline_python.sh. $PYTHON still wins, so anything that
+# already sets it keeps working.
+PYTHON_BIN="${PYTHON:-${PIPELINE_DIR}/bin/pipeline_python.sh}"
 
 export PYTHONPATH="${PIPELINE_DIR}:${PYTHONPATH:-}"
 

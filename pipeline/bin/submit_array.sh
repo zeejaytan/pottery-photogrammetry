@@ -7,7 +7,9 @@ PIPELINE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 CONFIG_PATH="${PIPELINE_DIR}/config/pipeline_config.yaml"
 TARGETS_OVERRIDE=""
 DRY_RUN=0
-PYTHON_BIN="${PYTHON:-python3}"
+# Not `python3`: see bin/pipeline_python.sh. $PYTHON still wins, so anything that
+# already sets it keeps working.
+PYTHON_BIN="${PYTHON:-${PIPELINE_DIR}/bin/pipeline_python.sh}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

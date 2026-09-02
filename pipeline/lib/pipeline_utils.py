@@ -131,12 +131,22 @@ def build_module_load_commands(config: Mapping[str, Any]) -> List[str]:
         return []
 
     cmds: List[str] = []
+
+    # extra_modules first, and in the order given. Under Lmod a module can live
+    # underneath a compiler in the hierarchy and simply not exist until that compiler
+    # is loaded — Python/3.10.4 sits under GCC/11.3.0 that way, so loading the Python
+    # module first (as this function used to) failed outright. The compiler chain is
+    # the thing everything else hangs off, so it goes first.
+    for module_name in env_cfg.get("extra_modules", []):
+        if module_name:
+            cmds.append(f"module load {module_name}")
+
+    # Optional, and empty in the shipped config: the interpreter comes from
+    # environment.python_interpreter via bin/pipeline_python.sh instead.
     python_module = env_cfg.get("python_module")
     if python_module:
         cmds.append(f"module load {python_module}")
 
-    for module_name in env_cfg.get("extra_modules", []):
-        cmds.append(f"module load {module_name}")
     return cmds
 
 

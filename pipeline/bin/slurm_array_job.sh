@@ -7,7 +7,9 @@ PROJECT_ROOT="${PROJECT_ROOT_OVERRIDE:-/data/gpfs/projects/punim2657/Photogramme
 PIPELINE_DIR="${PIPELINE_DIR_OVERRIDE:-${PROJECT_ROOT}/pipeline}"
 CONFIG_PATH="${CONFIG_PATH:-${PIPELINE_DIR}/config/pipeline_config.yaml}"
 TARGETS_FILE="${TARGETS_FILE:-}"
-PYTHON_BIN="${PYTHON:-python3}"
+# Not `python3`: see bin/pipeline_python.sh. $PYTHON still wins, so anything that
+# already sets it keeps working.
+PYTHON_BIN="${PYTHON:-${PIPELINE_DIR}/bin/pipeline_python.sh}"
 
 export PYTHONPATH="${PIPELINE_DIR}:${PYTHONPATH:-}"
 

@@ -47,7 +47,7 @@ Required packages:
 
 Recommended configuration:
 - **GPU**: NVIDIA A100 (80GB VRAM) or V100
-- **RAM**: 64GB+
+- **RAM**: 256GB (see *Troubleshooting → Environment*; 64GB is not enough)
 - **CPU**: 8+ cores
 - **Storage**: High-speed filesystem for image I/O
 
@@ -90,22 +90,43 @@ Recommended configuration:
 ### 7. Splitting & Validation
 - Connected component analysis
 - Per-sherd vertex/face counting
-- Validation against 100k vertex threshold
+- Validation against the `validation.min_vertices` threshold
 - CSV report generation
+
+**On the vertex threshold.** It is 2,000, not the 100,000 this pipeline originally used.
+Real sherds come out between 18k and 82k vertices; at 100,000 the only components that
+survived were the clamp rig (232k) and the backdrop (227k), and every piece of pottery was
+discarded. Vertex count measures how well something was photographed, not whether it is
+pottery.
 
 ## Quick Start
 
 ### Single Tree Processing
 
+On a compute node (never the login node — COLMAP's feature extractor alone peaks well
+above 100 GB):
+
 ```bash
 cd /path/to/Photogrammetry
-bash pipeline/bin/pipeline_main.sh <date>/<tree_id>
+sbatch pipeline/bin/submit_single.sh <date>/<tree_id>
 ```
 
 Example:
 ```bash
-bash pipeline/bin/pipeline_main.sh 16062025
+sbatch pipeline/bin/submit_single.sh 17062025/A02
 ```
+
+To run the stages directly on a node you already hold:
+
+```bash
+bash pipeline/bin/pipeline_main.sh 17062025/A02
+```
+
+**The interpreter is named in the config, not taken from `$PATH`.** Every stage runs
+through `pipeline/bin/pipeline_python.sh`, which resolves
+`environment.python_interpreter` and strips module-provided site-packages off
+`PYTHONPATH`. Override for one run with `PIPELINE_PYTHON=/path/to/python`. See
+*Troubleshooting → Environment* for why this is not simply `python3`.
 
 ### Batch Processing (Slurm)
 
@@ -239,7 +260,7 @@ mapper:
 
 ### OpenMVS Issues
 
-**Problem**: Low mesh density (< 100k vertices per sherd)
+**Problem**: Low mesh density per sherd
 
 **Solution**:
 1. Check `resolution_level: 0` (full resolution)
@@ -253,14 +274,54 @@ mapper:
 ReconstructMesh -i scene_dense.mvs -p scene_dense.ply -o output.ply
 ```
 
+### Environment
+
+These three are drift in the Spartan environment since November 2025, not faults in the
+pipeline's logic. All three are fixed in the shipped config; this is the record of why.
+
+**Problem**: the pipeline dies at its first line with `ModuleNotFoundError: No module named 'yaml'`
+
+`pipeline_main.sh` has to read the config to discover *which modules to load*, so the first
+Python it runs is necessarily one chosen before any module is loaded. That worked while the
+default `python3` happened to have PyYAML; on Spartan `python3` now resolves to the
+`graphify` conda environment, which does not.
+
+**Solution**: `environment.python_interpreter` names the interpreter explicitly, and
+`pipeline/bin/pipeline_python.sh` resolves it. It needs PyYAML, trimesh, numpy, pandas,
+scipy and networkx.
+
+**Problem**: `module load Python/3.10.4` fails outright
+
+Under Lmod that Python exists only underneath `GCC/11.3.0`, and the module list loaded it
+first. `build_module_load_commands` now emits `extra_modules` in order — compiler chain
+first — before any `python_module`.
+
+**Solution**: `environment.python_module` is empty; the interpreter comes from
+`python_interpreter` instead, which makes the module redundant.
+
+**Problem**: `ImportError: Importing the numpy C-extensions failed`
+
+Loading `COLMAP/3.9-CUDA-11.7.0` drags in `SciPy-bundle/2022.05`, which prepends a Python
+3.10 site-packages directory to `PYTHONPATH` and shadows the interpreter's own numpy.
+
+**Solution**: `pipeline_python.sh` drops module-tree entries from `PYTHONPATH` and keeps
+everything the caller put there deliberately (the pipeline sets `PYTHONPATH` itself so
+`lib.pipeline_utils` resolves, so clearing it outright is not an option).
+
 ### Memory Issues
 
 **Problem**: Out of memory during densification or meshing
 
-**Solution**:
-1. Increase Slurm memory: `--mem=128G`
-2. Reduce resolution: `resolution_level: 1` (half res)
-3. Reduce views: `number_views: 4`
+COLMAP's feature extractor was OOM-killed at 67 GB on the **first** image of A11
+(5568x3712, 16,000 features, domain-size pooling on). DSP-SIFT builds several scaled copies
+of each image per thread, so peak memory scales with pixels x features x threads rather than
+with the number of photographs — a small batch will not save you.
+
+**Solution**: the request is now 256G in both `submit_single.sh` and `slurm.mem_gb`. Raising
+it leaves the reconstruction unchanged; lowering `max_num_features` would not. If you must
+cut memory instead:
+1. Reduce resolution: `resolution_level: 1` (half res)
+2. Reduce views: `number_views: 4`
 
 ## Performance Metrics
 

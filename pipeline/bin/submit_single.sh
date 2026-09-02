@@ -3,7 +3,11 @@
 #SBATCH --partition=gpu-a100
 #SBATCH --qos=normal
 #SBATCH --time=24:00:00
-#SBATCH --mem=64G
+# 64G was OOM-killed on the FIRST image of A11 (5568x3712) at 67G. DSP-SIFT builds several
+# scaled copies of each image per thread, so COLMAP's feature extractor peaks on
+# pixels x features x threads, not on the number of photographs. Raising the request is the
+# fix that leaves the reconstruction unchanged; lowering max_num_features is not.
+#SBATCH --mem=256G
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:A100:1
 #SBATCH --job-name=colmap_single
