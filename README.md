@@ -80,12 +80,22 @@ Recommended configuration:
 ### 5. Mesh Reconstruction (OpenMVS)
 - Delaunay tetrahedralization
 - Graph-cut surface extraction
-- Target: 10M faces (no aggressive decimation)
+- **This stage, not stage 6, sets the vertex count.** Measured on 17062025/A02:
+  9.80M dense points in, 3.24M tetrahedralization vertices, 1.93M vertices /
+  3.86M faces out. The thinning is `--min-point-distance` (default 1.5 px,
+  currently unset): a point within 1.5 px of an already-inserted point is dropped.
+- `target_face_num` is a decimation **ceiling**, not a floor. A02 asked for 10M and
+  produced 3.86M, so the setting never fired. Raising it does nothing.
 
 ### 6. Mesh Refinement (OpenMVS)
-- Multi-scale refinement (2 iterations)
-- GPU-accelerated optimization
-- Typical output: ~1M vertices, ~2M faces
+- Multi-scale refinement (2 iterations), GPU-accelerated
+- **Refinement does not decimate, and barely adds vertices.** A02: subdivision took
+  1,929,612 -> 1,929,914 vertices (+302, 0.016%), then moved the existing vertices to
+  fit the photographs. Output 1,932,943 vertices / 3,865,305 faces. It runs with
+  `--decimate 1`, which in this build means disabled.
+- What it *does* change is smoothness, via `--regularity-weight` (default 0.2) on top
+  of `ReconstructMesh --smooth` (default 2). On A02's sherd SH5 that pair smoothed a
+  real fracture edge out of existence. See AGENTS.md.
 
 ### 7. Splitting & Validation
 - Connected component analysis
@@ -228,8 +238,8 @@ work_colmap_openmvs/
 │   ├── images/
 │   └── sparse/
 ├── scene_dense.ply            # Dense point cloud (9-10M points)
-├── scene_dense_mesh.ply       # Initial mesh (3-4M vertices)
-├── scene_refined_mesh.ply     # Refined mesh (1M vertices)
+├── scene_dense_mesh.ply       # Mesh from graph-cut  (A02: 1.93M verts, 73 MB)
+├── scene_refined_mesh.ply     # Same mesh, refit to photos (A02: 1.93M verts, 73 MB)
 ├── sherd_001.ply              # Individual sherds
 ├── sherd_002.ply
 ├── ...

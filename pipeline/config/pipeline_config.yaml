@@ -77,9 +77,36 @@ openmvs:
     number_views: 8                 # Increased from 6 for better coverage
     number_views_fuse: 5            # Increased from 4 for more robust fusion
   reconstruct:
-    target_face_num: 10000000       # Very high target for dense mesh
+    # A decimation CEILING, not a floor: it only fires if the mesh exceeds it. A02 asked
+    # for 10M and the graph-cut produced 3.86M, so this has never had any effect. Kept
+    # only as a guard against a runaway mesh. Raising it does nothing.
+    target_face_num: 10000000
+    # The knob that actually sets vertex count, if it is ever needed. OpenMVS default is
+    # 1.5 px: a dense point whose projection lands within this distance of an already
+    # inserted point is discarded (A02: 9.80M points -> 3.24M vertices). Lowering it is
+    # the only way to add vertices from real measurements; tetrahedralization time and
+    # memory grow steeply with it. Left unset = OpenMVS default.
+    # min_point_distance: 1.5
+    #
+    # OpenMVS also applies `--smooth 2` by default here, BEFORE refinement. Left unset,
+    # but it is one of the two suspects for the SH5 fracture edge (see AGENTS.md).
+    # smooth: 2
   refine:
-    scales: 2                       # Refinement iterations (adds detail)
+    # Refinement is NOT a density stage: on A02 it added 302 vertices (0.016%) and then
+    # moved the existing ones to fit the photographs. Raising `scales` adds smoothing
+    # iterations, not detail — it is the wrong lever for fracture fidelity.
+    scales: 2
+    # The smoothing knob. OpenMVS default 0.2, balancing photo-consistency against a
+    # smoothness prior. Lowering it (0.05-0.1) trusts the photographs more. This is the
+    # parameter to attack if fracture edges keep disappearing. Left unset = 0.2.
+    # regularity_weight: 0.2
+  cleanup:
+    # A02 leaves 162 depth maps at 105 MB each = 16 GB, against a 73 MB refined mesh.
+    # Nothing downstream reads them. Turn this on to delete them once RefineMesh has
+    # produced a real mesh (the code refuses if the mesh is missing or under 1 MB).
+    # scene_dense.mvs and scene_dense.ply are always kept: they are what make re-running
+    # ReconstructMesh/RefineMesh cheap, which is how the smoothing knobs above get tuned.
+    remove_depth_maps: false
 validation:
   # 100000 discarded every actual sherd on 16062025 — they come out between 18k and 82k
   # vertices — and kept only the clamp rig (232k) and the backdrop (227k). Vertex count

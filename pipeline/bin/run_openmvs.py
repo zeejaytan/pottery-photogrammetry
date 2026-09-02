@@ -46,6 +46,52 @@ def remove_path(path: Path) -> None:
         shutil.rmtree(path)
 
 
+def cleanup_depth_maps(work_dir, openmvs_cfg, refined_mesh_path, logger) -> None:
+    """Delete DensifyPointCloud's per-image depth maps once the mesh exists.
+
+    Measured on 17062025/A02: 162 depth maps at 105 MB each is 16 GB, against a 73 MB
+    refined mesh. They are the pipeline's own output and nothing downstream reads them.
+
+    What is deliberately NOT deleted: scene_dense.mvs and scene_dense.ply (~790 MB
+    together). Those are what let ReconstructMesh and RefineMesh be re-run without
+    re-densifying — 20-30 min instead of hours — which is exactly how the smoothing
+    parameters get tuned. Deleting them would make every mesh experiment expensive.
+
+    Off by default. Turn on with `openmvs.cleanup.remove_depth_maps: true`.
+    """
+    cleanup_cfg = (openmvs_cfg.get("cleanup") or {})
+    if not cleanup_cfg.get("remove_depth_maps", False):
+        return
+
+    # Never delete the inputs on the strength of a stage that did not actually produce
+    # anything. If the mesh is missing or implausibly small, keep everything.
+    if not refined_mesh_path.exists() or refined_mesh_path.stat().st_size < 1_000_000:
+        logger.warning(
+            "Skipping depth-map cleanup: %s is missing or too small to be a real mesh.",
+            refined_mesh_path,
+        )
+        return
+
+    dmaps = sorted(work_dir.glob("*.dmap"))
+    if not dmaps:
+        return
+
+    freed = 0
+    for dmap in dmaps:
+        try:
+            freed += dmap.stat().st_size
+            dmap.unlink()
+        except OSError as exc:
+            logger.warning("Could not remove %s: %s", dmap.name, exc)
+
+    logger.info(
+        "Cleanup: removed %d depth maps, freeing %.1f GB. Kept scene_dense.mvs and "
+        "scene_dense.ply so the mesh stages can be re-run without re-densifying.",
+        len(dmaps),
+        freed / 1e9,
+    )
+
+
 def main() -> int:
     args = parse_args()
     logging.basicConfig(level=logging.INFO, format="[OpenMVS] %(message)s")
@@ -186,6 +232,12 @@ def main() -> int:
     if "decimate" in reconstruct_cfg:
         reconstruct_cmd.extend(["--decimate", str(reconstruct_cfg["decimate"])])
 
+    # Smoothing passes over the graph-cut surface, BEFORE refinement. OpenMVS defaults
+    # to 2. One of the two places the SH5 fracture edge could have been lost; unset here
+    # so the default applies, but exposed so it can be turned down without editing code.
+    if "smooth" in reconstruct_cfg:
+        reconstruct_cmd.extend(["--smooth", str(reconstruct_cfg["smooth"])])
+
     logger.info("Reconstructing mesh without decimation (target: %d faces)...",
                 reconstruct_cfg.get("target_face_num", 5000000))
     run_command(reconstruct_cmd, logger=logger, cwd=work_dir)
@@ -211,6 +263,19 @@ def main() -> int:
     if "decimate" in refine_cfg:
         refine_cmd.extend(["--decimate", str(refine_cfg["decimate"])])
 
+    # Photo-consistency vs smoothness. OpenMVS defaults to 0.2; lower trusts the
+    # photographs more. The lever for fracture-edge fidelity — see AGENTS.md, SH5.
+    if "regularity_weight" in refine_cfg:
+        refine_cmd.extend(
+            ["--regularity-weight", str(refine_cfg["regularity_weight"])]
+        )
+
+    # Subdivision trigger, in square pixels of projected face area. OpenMVS defaults to
+    # 32, which on A02 subdivided 302 vertices out of 1.93M — effectively nothing. Lower
+    # it to add vertices, but they are interpolated, not measured.
+    if "max_face_area" in refine_cfg:
+        refine_cmd.extend(["--max-face-area", str(refine_cfg["max_face_area"])])
+
     refine_cmd.extend(["--export-type", "ply"])
 
     logger.info("Refining mesh (%d scales) without decimation...",
@@ -226,6 +291,8 @@ def main() -> int:
         )
 
     logger.info("OpenMVS pipeline complete at %s", work_dir)
+
+    cleanup_depth_maps(work_dir, openmvs_cfg, refined_mesh_path, logger)
     return 0
 
 

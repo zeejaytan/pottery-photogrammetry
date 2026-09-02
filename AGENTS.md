@@ -19,8 +19,36 @@ meshes. This is the primary reconstruction route for the project.
 > steep fold where Poisson resolved 1,298 mm. Fracture surfaces are exactly what GARF and
 > TORA match on. The median across sherds (141 mm) looks healthy and hides the failure
 > completely. **Check break edges sherd by sherd before feeding any mesh downstream.**
-> If fracture fidelity becomes the binding constraint, `refine.scales` is the parameter to
-> attack.
+
+### Which parameter to attack (corrected 2026-09-02)
+
+This file previously named `refine.scales`. That was wrong, and measurement says so.
+RefineMesh does not build the mesh — on A02 it added **302 vertices out of 1.93M (0.016%)**
+and then moved the existing ones. `scales` controls how many *smoothing* iterations run, so
+raising it makes SH5 worse and lowering it discards the photometric fit that gives the
+0.186 mm surface.
+
+Vertex density is also not the constraint. Vertices sit **0.461 mm apart**; the surface
+noise floor is **0.186 mm**. Poisson recovered SH5's edge with spacing of 0.436 mm — 5%
+finer. Density is not what separated them.
+
+The two knobs that do control smoothing, both now exposed in `pipeline_config.yaml` and
+both currently left at the OpenMVS default:
+
+| knob | default | effect |
+|---|---|---|
+| `openmvs.refine.regularity_weight` | 0.2 | photo-consistency vs smoothness prior. **Lower trusts the photographs more.** First thing to try. |
+| `openmvs.reconstruct.smooth` | 2 | smoothing passes applied before refinement even starts |
+
+And if density ever *is* wanted: `openmvs.reconstruct.min_point_distance` (default 1.5 px)
+is the only lever that adds vertices from real measurements — A02 fed 9.80M dense points in
+and kept 3.24M. `target_face_num` is a decimation ceiling and has never fired.
+
+**The cheap test.** A02's `dense_masked/scene_dense.mvs` + `scene_dense.ply` are already on
+disk, so ReconstructMesh + RefineMesh can be re-run without re-densifying (~20-30 min on a
+GPU node vs hours). Rerun with `smooth: 0`, `regularity_weight: 0.05`, then re-measure
+SH5's steep-fold length **and render the break edge** — the numeric median across sherds
+(141 mm) hid this failure once already.
 
 ## Paths
 
