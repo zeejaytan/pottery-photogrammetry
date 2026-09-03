@@ -94,8 +94,10 @@ Recommended configuration:
   fit the photographs. Output 1,932,943 vertices / 3,865,305 faces. It runs with
   `--decimate 1`, which in this build means disabled.
 - What it *does* change is smoothness, via `--regularity-weight` (default 0.2) on top
-  of `ReconstructMesh --smooth` (default 2). On A02's sherd SH5 that pair smoothed a
-  real fracture edge out of existence. See AGENTS.md.
+  of `ReconstructMesh --smooth` (default 2). Both are exposed in `pipeline_config.yaml`
+  and both should be left at the default: a 2x2 over them (job 29892523) raised A02
+  sherd SH5's steep fold 14x without producing any connected fracture edge, only surface
+  noise. See AGENTS.md.
 
 ### 7. Splitting & Validation
 - Connected component analysis

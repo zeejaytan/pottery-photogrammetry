@@ -15,10 +15,22 @@ meshes. This is the primary reconstruction route for the project.
 > zero loose debris against MILo's 17 pieces per sherd, zero interior holes against 10 mm.
 >
 > **The one thing to watch, and it is the thing this project needs most.** On sherd SH5 of
-> the seven, OpenMVS's refinement *smoothed the fracture edge out of existence* — 8 mm of
-> steep fold where Poisson resolved 1,298 mm. Fracture surfaces are exactly what GARF and
-> TORA match on. The median across sherds (141 mm) looks healthy and hides the failure
-> completely. **Check break edges sherd by sherd before feeding any mesh downstream.**
+> the seven, OpenMVS's refined mesh carries almost no steep fold — 10 mm of edge above 60°.
+> Fracture surfaces are exactly what GARF and TORA match on, and the median across sherds
+> (141 mm) looks healthy and hides SH5 completely. **Check break edges sherd by sherd
+> before feeding any mesh downstream.**
+>
+> **Corrected 2026-09-03 — do not repeat the earlier reading of this.** This was written as
+> "OpenMVS smoothed the edge away, Poisson resolved 1,298 mm of it". That comparison was
+> wrong, and it was wrong in the way this workspace keeps getting caught: **the ruler, not
+> the method.** Total steep-fold length says nothing about whether the fold is *one edge* or
+> *scattered specks*. Chained into connected runs, Poisson's 1,777 mm of steep fold on SH5
+> is only **108 mm in runs longer than 10 mm (6%), longest single run 17 mm** — against a
+> 431 mm sherd perimeter. Drawn, it is a speckled ragged fringe plus the octree grid, not a
+> crest tracing the break. **Poisson did not resolve SH5's fracture edge either.** What is
+> actually established is narrower: OpenMVS's SH5 perimeter is smooth and Poisson's is
+> rough. Neither has a fracture edge in it. See `docs/lessons.md` — this is the same failure
+> as "26 perimeters' worth of sharpness" from Delaunay's faceting.
 
 ### Which parameter to attack (corrected 2026-09-02)
 
@@ -29,8 +41,8 @@ raising it makes SH5 worse and lowering it discards the photometric fit that giv
 0.186 mm surface.
 
 Vertex density is also not the constraint. Vertices sit **0.461 mm apart**; the surface
-noise floor is **0.186 mm**. Poisson recovered SH5's edge with spacing of 0.436 mm — 5%
-finer. Density is not what separated them.
+noise floor is **0.186 mm**. Poisson's spacing is 0.436 mm — 5% finer, and it has no
+fracture edge either. Density is not what separates these meshes.
 
 The two knobs that do control smoothing, both now exposed in `pipeline_config.yaml` and
 both currently left at the OpenMVS default:
@@ -44,11 +56,33 @@ And if density ever *is* wanted: `openmvs.reconstruct.min_point_distance` (defau
 is the only lever that adds vertices from real measurements — A02 fed 9.80M dense points in
 and kept 3.24M. `target_face_num` is a decimation ceiling and has never fired.
 
-**The cheap test.** A02's `dense_masked/scene_dense.mvs` + `scene_dense.ply` are already on
-disk, so ReconstructMesh + RefineMesh can be re-run without re-densifying (~20-30 min on a
-GPU node vs hours). Rerun with `smooth: 0`, `regularity_weight: 0.05`, then re-measure
-SH5's steep-fold length **and render the break edge** — the numeric median across sherds
-(141 mm) hid this failure once already.
+**The cheap test — run 2026-09-03, job 29892523, 30 min. Both knobs answered: neither
+recovers SH5's edge.** A02's `dense_masked/scene_dense.mvs` + `scene_dense.ply` are on disk,
+so ReconstructMesh + RefineMesh re-run without re-densifying. A 2x2 was run so a change
+could be attributed to one knob rather than to the pair:
+
+| cell | smooth | reg. weight | 15-30° | 30-45° | 45-60° | >60° | in runs >10 mm | longest run |
+|---|---|---|---|---|---|---|---|---|
+| A (shipping default) | 2 | 0.20 | 2076 | 185 | 22 | **10 mm** | 0 mm (0%) | 2 mm |
+| B | 0 | 0.20 | 2294 | 253 | 44 | 22 mm | 0 mm (0%) | 4 mm |
+| C (both loosened) | 0 | 0.05 | 6926 | 1036 | 261 | **136 mm** | 0 mm (0%) | 8 mm |
+| D | 2 | 0.05 | 4095 | 462 | 77 | 22 mm | 0 mm (0%) | 2 mm |
+
+Read it this way. `regularity_weight` is the dominant knob and `smooth` is secondary (C and
+D move, B barely does) — so the knob table above is right about *which* lever matters. But
+**the coherent column is zero in every cell.** Loosening both raised steep fold 14x, to a
+longest connected run of 8 mm on a 431 mm perimeter. Rendered, cell C's extra fold is
+**speckle spread over the whole sherd wall**, not a line along the break: the 13x rise in
+gentle 15-30° fold is added surface noise, which is exactly what "trust the photographs
+more" buys when the photographs do not resolve the feature.
+
+**Conclusion: leave the defaults alone.** The limit is not OpenMVS's smoothing — it is what
+the photographs of SH5 contain. Do not spend more time on these two knobs; if SH5's break
+must be captured, it needs re-photography (closer, or raking light across the fracture),
+not a parameter. Meshes and fold renders: `artifacts/sh5_grid/`, `artifacts/sh5_fold/`.
+Measured with `scripts/experiments/measure_fold.py` (and drawn with `render_fold.py`) —
+**the coherence column is the part that matters; total fold length alone has now faked a
+finding twice here.**
 
 ## Paths
 
