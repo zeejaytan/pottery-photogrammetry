@@ -85,15 +85,8 @@ def main():
     d = json.loads(Path(a.boxes).read_text())
     mm_per_old = float(d["mm_per_unit"])
     box = next(b for b in d["boxes"] if b["id"] == a.sherd)
-    lo_mm = np.array(box["min_mm"], float) / mm_per_old
-    hi_mm = np.array(box["max_mm"], float) / mm_per_old
-    # old-unit box corners -> new frame: X_new = R' X_old + t'
-    Ri = R.T
-    ti = -Ri @ t / s
-    corners = np.array([[x, y, z] for x in (lo_mm[0], hi_mm[0])
-                        for y in (lo_mm[1], hi_mm[1]) for z in (lo_mm[2], hi_mm[2])])
-    cn = corners @ Ri.T / s + ti
-    nlo, nhi = cn.min(0), cn.max(0)
+    lo = np.array(box["min_mm"], float)
+    hi = np.array(box["max_mm"], float)
     mm_per_new = s * mm_per_old
     print(f"mm per new-unit: {mm_per_new:.3f}")
 
@@ -101,11 +94,14 @@ def main():
     from measure_fold import crop, fold_mm, load_mesh
     m = load_mesh(Path(a.mesh))
     print(f"new refined mesh: {len(m.vertices):,} vertices")
-    s_mesh = crop(m, nlo, nhi)
+    # Carry the new mesh into the OLD frame (Umeyama) and millimetres, so the
+    # published SH5 box applies as-is and pad=3.0 stays millimetres.
+    m.vertices = (s * (R @ np.asarray(m.vertices).T).T + t) * mm_per_old
+    s_mesh = crop(m, lo, hi)
     assert s_mesh is not None and len(s_mesh.vertices) > 100, "SH5 box empty in new frame"
     f = fold_mm(s_mesh)
-    conv = mm_per_new
-    print(f"{a.sherd} in gsaug: 15-30 {f['15-30']*conv:7.0f} | 30-45 {f['30-45']*conv:6.0f} | "
+    conv = 1.0
+    print(f"{a.sherd} in gsaug: 15-30 {f['15-30']:7.0f} | 30-45 {f['30-45']:6.0f} | "
           f"45-60 {f['45-60']*conv:6.0f} | >60 {f['60-90']*conv:7.0f} mm | "
           f"coherent {f['coherent_mm']*conv:7.0f} mm ({100*f['coherent_frac']:4.0f}%) "
           f"longest {f['longest_chain_mm']*conv:6.0f} mm | boundary {f['open_boundary']*conv:5.0f} mm")
