@@ -97,7 +97,7 @@ finding twice here.**
 
 Groups reconstructed so far: `17062025/A02`, `A03`, `A04`, `03072025/N01`.
 
-Workbench layout, and the harvest-then-delete procedure that goes with it: `C:\PR\docs\agents\workspace-hygiene.md`. Deletion follows `C:\PR\AGENTS.md` rule 13. Canonical checkout `/data/gpfs/projects/punim2657/Photogrammetry`; its `runs/` + `attic/` are not yet set up. Per-group outputs stay under `<data_root>/work_colmap_openmvs/`.
+Workbench layout, and the harvest-then-delete procedure that goes with it: `../docs/agents/workspace-hygiene.md`. Deletion follows `../AGENTS.md` rule 13. Canonical checkout `/data/gpfs/projects/punim2657/Photogrammetry`; its `runs/` + `attic/` are not yet set up. Per-group outputs stay under `<data_root>/work_colmap_openmvs/`.
 
 ## Running it
 
