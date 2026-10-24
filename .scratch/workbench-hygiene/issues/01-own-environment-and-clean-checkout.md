@@ -11,9 +11,9 @@
 
 Amendments 3.4 and 2.7. `AGENTS.md` itself calls the borrowed interpreter fragile: a rebuild of MILo's environment silently changes this pipeline's runs. The conservator agreed the scripts' fate is decided here (2026-10-24).
 
-- [ ] venv built in a short login-node job; `environment.python_interpreter` points at it
-- [ ] One stage re-run with it gives the same output as before
-- [ ] Each of the 9 scripts committed or archived, listed here
+- [x] venv built in a short login-node job; `environment.python_interpreter` points at it (built 2026-10-24 19:57 AEDT on the login node: Python 3.9.25 from `/usr/bin/python3`, RHEL 9.8; `envs/pipeline/FREEZE.txt`)
+- [ ] One stage re-run with it gives the same output as before (parity job 33745432, run `20261024-1957_bebfc9c_env-parity`, running)
+- [x] Each of the 9 scripts committed or archived, listed here (all 9 archived, proved and removed 2026-10-24; checkout now shows only the ignored `envs/ runs/ attic/`)
 
 ## What was found before building (2026-10-24, read-only on Spartan)
 
@@ -50,4 +50,12 @@ All dated 2025-10-26, all hard-wired to tree `16062025`, all from one day of COL
 | `validate_existing_model.py` | point count of each sparse model via `colmap model_analyzer` | archive: `colmap model_analyzer` does it directly |
 
 Record: `$REMOTE_ROOT/attic/untracked-scripts-20261024.tar.gz` + `-INDEX.txt` +
-`-deleted-manifest-20261024.tsv.gz` (pending: the harvest is proved before any removal).
+`-deleted-manifest-20261024.tsv.gz`. Proved before removal: `gzip -t` ok, 9 members, `cmp` ok
+for all 9 (conservator's OK on the decision card, 2026-10-24 08:50 UTC). Index row
+`attic-untracked-scripts-20261024` in `$REMOTE_ROOT/runs/index.tsv`. Log: project file
+`photogrammetry_hygiene_step2.txt`.
+
+Side note: the venv prints `RuntimeWarning: networkx backend defined more than once` on
+import. On RHEL a venv's `lib64` is a symlink to `lib`, so the same package appears twice on
+the path and networkx counts its entry point twice. It is a warning only (the MILo env shows
+it too); it changes no result.
