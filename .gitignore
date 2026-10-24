@@ -66,5 +66,4 @@ slurm-*.out
 
 # Local-only rsync landing zone for small fetched logs/renders (workspace convention)
 artifacts/
-.scratch/
 CLAUDE.local.md
