@@ -299,8 +299,11 @@ default `python3` happened to have PyYAML; on Spartan `python3` now resolves to 
 `graphify` conda environment, which does not.
 
 **Solution**: `environment.python_interpreter` names the interpreter explicitly, and
-`pipeline/bin/pipeline_python.sh` resolves it. It needs PyYAML, trimesh, numpy, pandas,
-scipy and networkx.
+`pipeline/bin/pipeline_python.sh` resolves it. The shipped config names the pipeline's own
+venv, `$REMOTE_ROOT/envs/pipeline`, which `pipeline/bin/build_env.sh` builds on the login
+node from `pipeline/requirements.txt` (PyYAML, numpy, pandas, scipy, networkx, trimesh,
+OpenCV, all pinned). It stands on the system Python because a venv on a module Python does
+not start until its module is loaded.
 
 **Problem**: `module load Python/3.10.4` fails outright
 

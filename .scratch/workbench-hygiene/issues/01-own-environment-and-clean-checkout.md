@@ -6,10 +6,48 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** in-progress
+**Working in:** project thread "Photogrammetry environment and checkout", branch `claude/project-thread-t3amqn` (2026-10-24)
 
 Amendments 3.4 and 2.7. `AGENTS.md` itself calls the borrowed interpreter fragile: a rebuild of MILo's environment silently changes this pipeline's runs. The conservator agreed the scripts' fate is decided here (2026-10-24).
 
 - [ ] venv built in a short login-node job; `environment.python_interpreter` points at it
 - [ ] One stage re-run with it gives the same output as before
 - [ ] Each of the 9 scripts committed or archived, listed here
+
+## What was found before building (2026-10-24, read-only on Spartan)
+
+Raw listings: project files `photogrammetry_hygiene_{checkout_state,milo_env,base_python,a02_layout}.txt`.
+
+- **The venv cannot stand on a module Python.** `GCC/11.3.0 Python/3.10.4` gives a
+  `python3.10` linked to the module's `libpython3.10.so`; after `module purge` it exits 127.
+  `pipeline_main.sh` runs the interpreter *before* loading modules, so Spartan's usual recipe
+  (load the Python module, then make a venv: https://dashboard.hpc.unimelb.edu.au/software/python/)
+  would break the pipeline's first line. **Chosen: `/usr/bin/python3` (3.9.25, RHEL 9.8)**,
+  which needs nothing loaded and is the same 3.9 the MILo environment runs (3.9.23), so the
+  same wheels install. Risk stated in `build_env.sh`: an operating-system upgrade means a rebuild.
+- **`requirements.txt` was incomplete.** It listed 4 packages; the pipeline imports 7 (scipy
+  and networkx for splitting the mesh into sherds, OpenCV with ArUco for the scale step). Now
+  all 7, pinned to the MILo environment's versions so the move changes nothing computed.
+- **There was no earlier split of A02 to compare against** (`work_colmap_openmvs` holds no
+  `sherds/` or report). So the "same output" check runs the split twice on the same mesh,
+  once per interpreter (`scripts/experiments/env_parity.slurm`), and compares byte for byte.
+
+## The 9 scripts: all archived, none committed
+
+All dated 2025-10-26, all hard-wired to tree `16062025`, all from one day of COLMAP tuning.
+
+| script | what it did | verdict |
+|---|---|---|
+| `force_rebuild_colmap.sh` | `rm -rf` the whole 16062025 work dir, rerun the pipeline | archive: destructive one-off |
+| `rebuild_colmap_matching.sh` | delete the pipeline state, rerun `run_colmap.py --rebuild-from-matching` with the old broken module order | archive: one-off, superseded module order |
+| `submit_standard_gpu.sh` | runs `test_ultra_permissive.sh`, despite its name submits nothing | archive: misnamed wrapper |
+| `targets_single_16062025.txt` | one line, `16062025` | archive: input of `test_single.sh` |
+| `test_permissive_colmap.sh` | `rm -rf` sparse/, rerun with `--force-colmap` | archive: destructive one-off |
+| `test_single.sh` | resume the pipeline on that one tree | archive: `pipeline_main.sh --resume` does it |
+| `test_turntable_colmap.sh` | the turntable COLMAP settings (guided matching, min triangulation angle 2°, 15 inliers) run by hand; its registration count reads `database.db` as if it were `images.bin` | archive: the settings are already in `pipeline_config.yaml`; its check is wrong |
+| `test_ultra_permissive.sh` | `rm -rf` sparse/, rerun with `--force-colmap` | archive: destructive one-off |
+| `validate_existing_model.py` | point count of each sparse model via `colmap model_analyzer` | archive: `colmap model_analyzer` does it directly |
+
+Record: `$REMOTE_ROOT/attic/untracked-scripts-20261024.tar.gz` + `-INDEX.txt` +
+`-deleted-manifest-20261024.tsv.gz` (pending: the harvest is proved before any removal).

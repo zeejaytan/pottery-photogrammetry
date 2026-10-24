@@ -1,4 +1,16 @@
-trimesh>=3.20.0
-numpy>=1.24.0
-pyyaml>=6.0
-pandas>=2.0.0
+# The pipeline's own environment: $REMOTE_ROOT/envs/pipeline, built by bin/build_env.sh.
+#
+# Pinned to the versions the borrowed MILo environment carried on 2026-10-24 (Python 3.9),
+# so moving off it changes nothing a stage computes. Raise a pin on purpose, in its own
+# commit, and re-run the parity check (scripts/experiments/env_parity.slurm) when you do.
+#
+# scipy and networkx were missing from this list before: trimesh uses them to split the
+# refined mesh into sherds. opencv is the headless build of the same release: the pipeline
+# reads and draws on images but never opens a window.
+PyYAML==6.0.3
+numpy==1.26.4
+pandas==2.2.3
+scipy==1.13.1
+networkx==3.2.1
+trimesh==4.6.8
+opencv-python-headless==4.11.0.86

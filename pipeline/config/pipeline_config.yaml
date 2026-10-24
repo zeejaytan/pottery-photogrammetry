@@ -23,10 +23,10 @@ environment:
   use_module_system: true
   # The interpreter every stage runs on. Named explicitly because pipeline_main.sh must
   # read this file BEFORE any module is loaded, and `python3` on Spartan now resolves to
-  # the `graphify` conda environment, which has no PyYAML. Needs PyYAML, trimesh, numpy,
-  # pandas, scipy and networkx. Borrowed from the MILo project for now — see AGENTS.md,
-  # "The interpreter is borrowed".
-  python_interpreter: /data/gpfs/projects/punim2657/MILo/envs/milo/bin/python
+  # the `graphify` conda environment, which has no PyYAML. This is the pipeline's own venv,
+  # built by pipeline/bin/build_env.sh from pipeline/requirements.txt (2026-10-24; until
+  # then it borrowed the MILo project's conda environment). $PIPELINE_PYTHON overrides it.
+  python_interpreter: /data/gpfs/projects/punim2657/Photogrammetry/envs/pipeline/bin/python
   # Deliberately empty. Python/3.10.4 lives underneath GCC in the Lmod hierarchy, so
   # loading it before the compiler fails outright; and the interpreter now comes from
   # python_interpreter, which makes the module redundant either way.

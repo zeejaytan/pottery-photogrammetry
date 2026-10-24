@@ -121,22 +121,33 @@ in `pipeline/config/pipeline_config.yaml`, and README → *Troubleshooting → E
    the clamp rig and backdrop. Now 2000.
 4. 64 G was OOM-killed at 67 G on one 5568x3712 image. Now 256 G in both submit paths.
 
-### The interpreter is borrowed
+### The pipeline's own interpreter
 
-`environment.python_interpreter` points at **the MILo project's conda environment**
-(`/data/gpfs/projects/punim2657/MILo/envs/milo/bin/python`, Python 3.9.23), because it is
-the one environment on Spartan that already has all six dependencies — PyYAML, trimesh,
-numpy, pandas, scipy, networkx.
+`environment.python_interpreter` points at **`$REMOTE_ROOT/envs/pipeline/bin/python`**, a
+venv built by `pipeline/bin/build_env.sh` from `pipeline/requirements.txt` (2026-10-24,
+workbench ticket 01). Until then the pipeline borrowed the MILo project's conda environment,
+so a rebuild of MILo's environment could silently change this pipeline's runs.
 
-**This is a known piece of fragility, not a design.** This repo should not depend on
-another project's environment surviving; if MILo's env is rebuilt or removed, this pipeline
-stops. The fix is a dedicated venv under `$REMOTE_ROOT/envs/`, built from
-`pipeline/requirements.txt` — a login-node job of a few minutes. Until that exists, the
-borrowing is at least explicit, in one config key, overridable with `$PIPELINE_PYTHON`.
+- **It stands on the system Python (`/usr/bin/python3`, 3.9 on RHEL 9), not a module.**
+  `pipeline_main.sh` runs the interpreter before any module is loaded. A venv on the
+  `Python/3.10.4` module links libpython from the module tree and exits 127 with the module
+  unloaded (checked on Spartan 2026-10-24), so Spartan's usual "module Python + venv" recipe
+  does not fit here. If Spartan's operating system moves off RHEL 9, rebuild and re-check.
+- **The versions are pinned to what the MILo environment carried** (numpy 1.26.4, trimesh
+  4.6.8, scipy 1.13.1, networkx 3.2.1, OpenCV 4.11), so the move changed nothing a stage
+  computes. Raising a pin is its own commit, followed by
+  `scripts/experiments/env_parity.slurm`, which splits the same refined mesh under two
+  interpreters and compares every output byte for byte.
+- **Rebuild:** `pipeline/bin/build_env.sh` on the login node. It builds beside the old one
+  and keeps it as `envs/pipeline.old-<date>`; it never deletes.
 
-## Untracked working scripts on Spartan
+## No untracked scripts at the Spartan checkout
 
-`$REMOTE_ROOT` carries nine untracked ad-hoc scripts (`test_turntable_colmap.sh`,
-`force_rebuild_colmap.sh`, `validate_existing_model.py`, …) from the November 2025 tuning.
-Tracked files there are clean and level with `origin/main`. Ask before committing any of
-them — see workspace rule 3.
+The nine ad-hoc scripts from the October 2025 COLMAP tuning on `16062025`
+(`test_turntable_colmap.sh`, `force_rebuild_colmap.sh`, `validate_existing_model.py`, …)
+were archived on 2026-10-24, not committed: their tuned settings are already in
+`pipeline_config.yaml`, and four of them `rm -rf` parts of a work directory by a hard-coded
+path. The record is `$REMOTE_ROOT/attic/untracked-scripts-20261024.tar.gz` with its
+`-INDEX.txt`; the list and the reason for each is in
+`.scratch/workbench-hygiene/issues/01-own-environment-and-clean-checkout.md`. New scripts
+are committed (`scripts/`) or kept out of the checkout.

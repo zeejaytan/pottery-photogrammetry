@@ -67,3 +67,9 @@ slurm-*.out
 # Local-only rsync landing zone for small fetched logs/renders (workspace convention)
 artifacts/
 CLAUDE.local.md
+
+# The working area on Spartan shares the checkout: its own venv, run records and attic
+# (AGENTS.md; workbench ticket 01). Never source.
+/envs/
+/runs/
+/attic/
