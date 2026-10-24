@@ -14,7 +14,11 @@
 # the per-sherd report and every exported sherd mesh. Byte equality is the test; a
 # difference is listed file by file, and the job exits 1.
 #
-#   MESH=...  the refined mesh to split (default: A02's shipping-default refined mesh)
+#   MESH=...      the refined mesh to split (default: A02's shipping-default refined mesh)
+#   MIN_AREA=...  override validation.min_component_area in a copy of the config, so the
+#                 split exports sherd meshes to compare. The shipped 10.0 is in mesh units;
+#                 on A02 it skipped every component (run 20261024-1957_bebfc9c_env-parity),
+#                 leaving only the report to compare. Default: the shipped value.
 set -euo pipefail
 
 : "${RUN_DIR:?submit with new_run.sh}" "${SOURCE_COMMIT:?}" "${CANONICAL:?}"
@@ -29,6 +33,12 @@ echo "=== job ${SLURM_JOB_ID:-?} on $(hostname), commit ${SOURCE_COMMIT} ==="
 echo "mesh: $MESH ($(stat -c %s "$MESH") bytes)"
 cd "$SRC"
 export PYTHONPATH="$SRC/pipeline"
+CONFIG=pipeline/config/pipeline_config.yaml
+if [[ -n "${MIN_AREA:-}" ]]; then
+    sed -E "s/^(  min_component_area:)[^#]*/\1 ${MIN_AREA} /" "$CONFIG" > "$RUN_DIR/out/config_used.yaml"
+    CONFIG="$RUN_DIR/out/config_used.yaml"
+    grep -n "min_component_area" "$CONFIG"
+fi
 
 for name in borrowed own; do
     py=$([[ $name == borrowed ]] && echo "$BORROWED" || echo "$OWN")
@@ -42,7 +52,7 @@ for name in borrowed own; do
         'import sys, numpy, trimesh, scipy, networkx; print(sys.executable, sys.version.split()[0], "numpy", numpy.__version__, "trimesh", trimesh.__version__, "scipy", scipy.__version__, "networkx", networkx.__version__)'
     start=$SECONDS
     PIPELINE_PYTHON="$py" pipeline/bin/pipeline_python.sh pipeline/bin/split_and_validate.py \
-        --config pipeline/config/pipeline_config.yaml --mesh "$MESH" --output-dir "$out" \
+        --config "$CONFIG" --mesh "$MESH" --output-dir "$out" \
         2> "$RUN_DIR/logs/split_$name.err"
     rc=$?
     set -e
