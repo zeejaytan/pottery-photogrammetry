@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Check the Worker: trailer on every code commit in the push
+      - name: "Check the Worker: trailer on every code commit in the push"
         run: >-
           python3 .github/worker-trailer/check_worker_trailer.py
           --range "${{ github.event.before }}..${{ github.sha }}"
