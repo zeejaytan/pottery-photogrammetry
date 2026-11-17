@@ -1,0 +1,26 @@
+# worker-trailer -- fail a push that carries a code commit with no Worker: trailer.
+#
+# The laptop's git hooks (scripts/githooks/commit-msg, from scripts/check_worker_trailer.py)
+# refuse such a commit as it is made. This runs the same checker again on GitHub, where a
+# commit can still arrive that the hook never saw: made with --no-verify, made in a cloud
+# clone with no hooks installed, or made on a machine with no python.
+#
+# Source of truth is pr-workspace: scripts/ci/worker-trailer.yml, with the checker at
+# scripts/check_worker_trailer.py. scripts/sync_worker_trailer.sh copies both into every
+# clone as .github/workflows/worker-trailer.yml and
+# .github/worker-trailer/check_worker_trailer.py; edit the source, then run the sync.
+name: worker-trailer
+
+on: push
+
+jobs:
+  worker-trailer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check the Worker: trailer on every code commit in the push
+        run: >-
+          python3 .github/worker-trailer/check_worker_trailer.py
+          --range "${{ github.event.before }}..${{ github.sha }}"
