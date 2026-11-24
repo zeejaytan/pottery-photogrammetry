@@ -56,6 +56,7 @@ FALLBACK_REASONS = ("laptop off", "dsh down", "flash failed twice")
 SMALL_OR_URGENT = re.compile(r"user called it small/urgent \d{4}-\d{2}-\d{2}")
 _USER_AGREED = re.compile(r"user agreed \d{4}-\d{2}-\d{2}", re.IGNORECASE)
 _LAPSE = re.compile(r"lapse\s*:\s*(.+)", re.IGNORECASE | re.DOTALL)
+_SMALL_CHANGE = re.compile(r"small change\s*:\s*(.+)", re.IGNORECASE | re.DOTALL)
 GIT_TIMEOUT = 120
 
 OK, REFUSE, UNCHECKED = 0, 1, 2
@@ -67,6 +68,7 @@ VALID_FORMS = (
     "    Worker: Haiku -- <reason>: <evidence>",
     "    Worker: lead -- user agreed YYYY-MM-DD",
     "    Worker: lead -- lapse: <why>",
+    "    Worker: lead -- small change: <diff size, review finding, or the user's words>",
     "    Worker: person",
     "    Worker: person -- <anything>",
 )
@@ -174,6 +176,9 @@ def trailer_verdict(value):
     if who == "lead":
         if rest is None:
             return None
+        small = _SMALL_CHANGE.fullmatch(rest)
+        if small and small.group(1).strip():
+            return "pass"
         if _USER_AGREED.fullmatch(rest):
             return "pass"
         lapse = _LAPSE.fullmatch(rest)
